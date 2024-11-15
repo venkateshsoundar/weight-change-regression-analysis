@@ -1,0 +1,101 @@
+---
+title: "DATA603-QuantModel"
+output: html_document
+date: "2024-11-15"
+---
+
+# Quantitative Model
+
+```{r}
+weight=read.csv("C:\\Users\\steen\\OneDrive\\Documents\\DATA603\\weight_change_dataset.csv")
+
+colnames(weight)
+```
+
+Quant full model
+```{r}
+quant_weight_model_full = lm(Weight.Change..lbs. ~ Age + `Current.Weight..lbs.` + `BMR..Calories.` + `Daily.Calories.Consumed` + `Daily.Caloric.Surplus.Deficit` + Duration..weeks. + `Final.Weight..lbs.`, data = weight)
+
+summary(quant_weight_model_full)
+```
+
+```{r}
+quant_weight_model_take2 = lm(Weight.Change..lbs. ~ Age + `BMR..Calories.` + 
+                         `Daily.Calories.Consumed` + `Daily.Caloric.Surplus.Deficit` + Duration..weeks., data = weight)
+summary(quant_weight_model_take2)
+```
+
+```{r}
+library(olsrr)
+```
+
+Stepwise
+```{r}
+weight_model_take2 = lm(Weight.Change..lbs. ~ Age + `BMR..Calories.` + 
+                         `Daily.Calories.Consumed` + `Daily.Caloric.Surplus.Deficit` + 
+                         Duration..weeks., data = weight)
+
+weight_step_model = ols_step_both_p(weight_model_take2, p_enter = 0.20, p_remove = 0.25, details = TRUE)
+
+summary(weight_step_model$model)
+
+```
+
+```{r}
+library(GGally)
+```
+
+```{r}
+weightfigs = data.frame(
+  weight$Weight.Change..lbs., 
+  weight$Age, 
+  weight$`BMR..Calories.`, 
+  weight$`Daily.Calories.Consumed`, 
+  weight$`Daily.Caloric.Surplus.Deficit`, 
+  weight$Duration..weeks.
+)
+
+ggpairs(weightfigs, lower = list(continuous = "smooth_loess", combo = "facethist", na = "na"))
+```
+
+```{r}
+weight_model_take2_int = lm(Weight.Change..lbs. ~ (Age + `BMR..Calories.` + 
+                         `Daily.Calories.Consumed` + `Daily.Caloric.Surplus.Deficit` + 
+                         Duration..weeks.)^2, data = weight)
+
+summary(weight_model_take2_int)
+```
+
+check for multicollinearity (VIF)
+
+```{r}
+library(car)
+
+quant_weight_model_take2 = lm(Weight.Change..lbs. ~ Age + `BMR..Calories.` + `Daily.Calories.Consumed` + `Daily.Caloric.Surplus.Deficit` + Duration..weeks., data = weight)
+
+quant_vif_values = vif(quant_weight_model_take2)
+
+print(quant_vif_values)
+```
+
+
+Higher values in BMR..Calories., Daily.Calories.Consumed, and Daily.Caloric.Surplus.Deficit indicate high multicolinearity for these variables. Suggests values are highly correlated with each other. Makes it difficult to determine their individual effects on Weight.Change..lbs..
+
+
+Remove high collinear predictors, do vif again
+
+```{r}
+quant_weight_model_reduced = lm(Weight.Change..lbs. ~ Age + Duration..weeks., data = weight)
+
+vif(quant_weight_model_reduced)
+```
+
+Refit model
+```{r}
+reduced_model = lm(Weight.Change..lbs. ~ Age + Duration..weeks., data = weight)
+summary(reduced_model)
+```
+
+
+
+
