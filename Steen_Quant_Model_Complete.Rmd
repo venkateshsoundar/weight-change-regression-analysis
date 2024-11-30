@@ -1,0 +1,320 @@
+---
+title: "Quant_Model_Complete"
+output:
+  pdf_document:
+    latex_engine: pdflatex
+date: "2024-11-27"
+---
+
+## Load Required Libraries
+
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(GGally)
+library(car)
+library(lmtest)
+library(MASS)
+library(mctest)
+library(leaps)
+library(olsrr)
+```
+
+
+# Load dataset
+
+```{r}
+
+weight = read.csv("C:\\Users\\steen\\OneDrive\\Documents\\DATA603\\weight_change_dataset.csv")
+
+colnames(weight)
+
+```
+
+Variables under consideration:
+
+ [1] "Participant.ID"               
+ [2] "Age"                          
+ [3] "Gender"                       
+ [4] "Current.Weight..lbs."         
+ [5] "BMR..Calories."               
+ [6] "Daily.Calories.Consumed"      
+ [7] "Daily.Caloric.Surplus.Deficit"
+ [8] "Weight.Change..lbs."          
+ [9] "Duration..weeks."             
+[10] "Physical.Activity.Level"      
+[11] "Sleep.Quality"                
+[12] "Stress.Level"                 
+[13] "Final.Weight..lbs." 
+
+
+# Assumptions
+
+$H_0: \beta_1 = \beta_2 =...= \beta_i=0\mbox{    (i=1,2,...,p)}$
+$H_a: \mbox{ At least one } \beta_i \neq 0\mbox{    (i=1,2,...,p)}$
+
+
+# Quant full model
+
+```{r}
+quant_weight_model_full = lm(Weight.Change..lbs. ~ Age + `Current.Weight..lbs.` + `BMR..Calories.` + `Daily.Calories.Consumed` + `Daily.Caloric.Surplus.Deficit` + Duration..weeks. + `Final.Weight..lbs.`, data = weight)
+
+summary(quant_weight_model_full)
+```
+
+The predictors Current.Weight..lbs. and Final.Weight..lbs. are highly significant but when used in relation to Weight.Change..lbs. are too correlated. Hence, we will remove them because weight change is calculated using the current weight and the final weight.
+
+
+# Remove CURRENT WEIGHT and FINAL WEIGHT.
+
+```{r}
+quant_weight_model_take2 = lm(Weight.Change..lbs. ~ Age + `BMR..Calories.` + 
+                         `Daily.Calories.Consumed` + `Daily.Caloric.Surplus.Deficit` + Duration..weeks., data = weight)
+summary(quant_weight_model_take2)
+```
+
+After removing CURRENT WEIGHT and FINAL WEIGHT, we see no statistically significant predictors and we have an adjusted \(R^2\) of -0.01382 which suggests that the remaining predictors have limited explanatory value. This low adjusted \(R^2\) points to that more refinement is needed.
+
+
+# Check Multicollinearity (VIF)
+
+```{r}
+vif(quant_weight_model_take2)
+imcdiag(quant_weight_model_take2, method="VIF")
+
+```
+
+After checking the VIF, we have the result: Age = \(1.068859\), BMR..Calories. = \(8.185700 \times 10^7\), Daily.Calories.Consumed = \(1.625962 \times 10^8\), Daily.Caloric.Surplus.Deficit = \(8.519425 \times 10^7\), and Duration..weeks. = \(1.034519\). Values greater than 10 suggest severe multicollinearity, hence BMR..Calories., Daily.Calories.Consumed, and Daily.Caloric.Surplus.Deficit are caught in VIF detection and thus are removed to reduce redundancy.
+
+<br>
+
+From our output, we can see that three variables have a VIF score > 5, suggesting multicollinearity.
+
+<br>
+
+# Model Selection
+
+```{r}
+WeightSubsets=ols_step_best_subset(quant_weight_model_take2, details=TRUE)
+
+WeightSubsets$metrics
+
+rsquare=c((WeightSubsets$metrics)$rsquare)
+AdjustedR=c((WeightSubsets$metrics)$adjr)
+cp=c((WeightSubsets$metrics)$cp)
+AIC=c((WeightSubsets$metrics)$aic)
+cbind(rsquare,AdjustedR,cp,AIC)
+```
+
+Following the removal of those variables, we determine which predictors are significant using the hypothesis test:
+
+
+$H_0: \beta_i =0 \mbox{    (i=1,2,...,p)}$
+$H_a: \beta_i \neq 0\mbox{    (i=1,2,...,p)}$
+
+
+Here we are performing the model selection to find the best subset using \(R^2\), adjusted \(R^2\), Mallows \(C_p\), and AIC. From this we observe that the best model for \(R^2\) is model 2, Adjusted \(R^2\) is model 2, and AIC is model 1. Thus, we decide to take the model subset with the two predictors: BMR..Calories. and Duration..weeks..
+
+
+
+<br>
+
+#### Centre variables to account for multicollinearity
+
+```{r}
+
+
+weight$Calories_centered = scale(weight$BMR..Calories., center = TRUE, scale = FALSE)
+weight$Duration_centered = scale(weight$Duration..weeks., center = TRUE, scale = FALSE)
+
+```
+
+To fix potential remaining multicollinearity and to improve the interpretability we centre the remaining predictors, BMR..Calories. and Duration..weeks.. In doing this we create the new variables, Calories_centered and Duration_centered. Centring helps to reduce the correlation between the predictors and interaction terms.
+
+
+
+### Model centred variables
+
+```{r}
+quant_weight_model_take4 = lm(Weight.Change..lbs. ~ Calories_centered + Duration_centered, data = weight)
+summary(quant_weight_model_take4)
+
+```
+
+```{r}
+vif(quant_weight_model_take4)
+
+imcdiag(quant_weight_model_take4, method="VIF")
+```
+
+As we can see from our output, there are no issues with multicollinearity.
+
+<br>
+
+Now we summarize our new centred and reduced model to see if there is any increased explanatory power. This model has a higher adjusted \(R^2\) of 0.00985, which is increased from before, -0.01382. Neither predictor has a significant p-value, meaning they do not significantly predict weight change. We see after redoing VIF that centring has helped to reduce the multicollinearity.
+
+
+
+# Add interaction terms
+```{r}
+centered_interaction_model = lm(Weight.Change..lbs. ~ (Calories_centered + Duration_centered)^2, data = weight)
+
+summary(centered_interaction_model)
+
+```
+
+Next we add interaction terms to our centred and simplified model. From doing this we can see that we have an increased Adjusted R-squared value of 0.01976, previously it was 0.00985. There are still no significant p-values for any of the predictors or their interaction terms. The overall model remains non-significant with a p-value of 0.1796 and a high residual standard error of 7.37. Although the model is slightly improved with the interaction model, the model still shows little to no correlation.
+
+# Higher-oder model
+
+```{r}
+higher_order = lm(Weight.Change..lbs. ~ Calories_centered * Duration_centered + I(Calories_centered^2) + I(Duration_centered^2), data = weight)
+
+summary(higher_order)
+```
+Here we test the higher-order model but not is a viable model since the adjusted \(R^2\) was reduced. Thus, we will use our previous centred interaction model in order to keep simplicity. 
+
+<br>
+
+### Final Model Equation with coefficients
+
+$$\text{Weight Change (lbs)} = -2.783 - 0.00244(\text{Calories\_centered}) - 0.318(\text{Duration\_centered}) - 0.00071(\text{Calories\_centered} \times \text{Duration\_centered})$$
+
+# Residuals - check code
+
+```{r}
+plot(centered_interaction_model)
+```
+
+The diagnostic plots for the final model highlight some issues. For example, a slightly non-linear in the residual vs fitted plot, heavy tails in the Q-Q plot which indicates non-normal residuals, and non constant variance in the scale-location plot which suggests heteroscedasticity. We can also observe some outliers for 38, 79, and 97 shown on the residuals vs leverage plot. These findings show that the model assumptions are not fully met and that additional predictors may be necessary to improve the model.
+
+
+# Linearity Assumption - check code
+
+```{r}
+# Residuals vs Fitted Values
+ggplot(centered_interaction_model, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_smooth(method = "loess", color = "blue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Residuals vs Fitted Values", x = "Fitted Values", y = "Residuals")
+```
+
+The residuals vs fitted values plot suggest some mild violation of the linearity and homoscedasticity assumptions. The deviations are not extreme but the model may benefit from the inclusion of additional predictors.
+
+
+# Independence Assumption - check code
+
+```{r}
+plot(residuals(centered_interaction_model), type = "o", col = "blue", 
+     main = "Residuals vs Observation Number",
+     xlab = "Observation Number", ylab = "Residuals")
+abline(h = 0, lty = 2, col = "red")
+```
+
+For the independence assumption we see that the residuals vs the observation number plot oscillates around the horizontal zero, meaning there is no clear trend and thus suggesting that the independence assumption is most likely met since there is no evidence of residuals being sequentially dependent. Overall, the independence assumption appears to be valid.
+
+# Equal Variance Assumption - check code
+
+```{r}
+ggplot(centered_interaction_model, aes(x = .fitted, y = .resid)) +
+  geom_point(color = "purple") +
+  geom_smooth(method = "loess", color = "green4") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Residuals vs Fitted Values", x = "Fitted Values", y = "Residuals")
+
+# Breusch-Pagan Test
+bptest(centered_interaction_model)
+```
+
+
+# Test homoscedasticity
+
+To test for homoscedasticity we can look at our residual plots, scale-location plots, and run a Breusch-Pagan Test, using the following hypothesis:
+$$H_0: \sigma^2_1 = \sigma^2_2 = ...=\sigma^2_n\mbox { (heteroscedasticity is not present)} \\
+H_a: \mbox {at least one }\sigma^2_i \mbox{ is different from the others i = 1, 2, ..., n (heteroscedasticity is not present)}$$
+
+
+The residuals vs fitted values plot shows a slight pattern where the spread increases at extreme fitted values. This suggest mild heteroscedasticty. The LOESS curve deviates from the dashed horizontal line, further indicating non-constant variance. The Breusch-Pagan test confirms this with the statistic BP=17.501 and a p-value 0.0005574, strongly rejecting the null hypothesis of equal variance. Hence, this indicates a violation of the assumption.
+
+
+# Normality Assumption - check code
+
+```{r}
+# Histogram of residuals
+ggplot(data = weight, aes(residuals(centered_interaction_model))) +
+  geom_histogram(bins = 10, color = "green3", fill = "green4") +
+  labs(title = "Histogram for Residuals", x = "Residuals", y = "Count")
+
+# QQ Plot
+qqnorm(residuals(centered_interaction_model))
+qqline(residuals(centered_interaction_model), col = "red")
+
+# Shapiro-Wilk Test
+shapiro.test(residuals(centered_interaction_model))
+
+```
+
+For the normality assumption we use a histogram, a Q-Q plot, and Shapiro-Wilk test. In the histogram was see a right-skewed distribution with a concentration of residuals near zero and a long tail extending into negative values, which indicates deviation from the expected normal distribution. The Q-Q plot shows that the residuals deviate from the diagonal line, in particular at the tails. This suggests the that residuals are not normally distributed. For the Shapiro-Wilk Test we get \(W = 0.86881\) and a p-value = \(6.277 \times 10^-8\), thus we strongly reject the null hypothesis of normality, therefore confirming that the residuals are not normally distributed.
+
+
+# Check for Outliers - check code
+
+```{r}
+# Cook's Distance
+plot(centered_interaction_model, which = 4, col = "red", pch = 18, 
+     main = "Cook's Distance Plot")
+
+# Observations with high Cook's distance
+weight[cooks.distance(centered_interaction_model) > 0.5, ]
+
+# Leverage values
+lev = hatvalues(centered_interaction_model)
+p = length(coef(centered_interaction_model))
+n = nrow(weight)
+outliers_2pn = lev[lev > (2 * p / n)]
+outliers_3pn = lev[lev > (3 * p / n)]
+
+# Leverage plot
+plot(1:n, lev, type = "h", main = "Leverage Plot", 
+     xlab = "Observation Index", ylab = "Leverage")
+abline(h = c(2 * p / n, 3 * p / n), col = c("blue", "red"), lty = 2)
+legend("topright", legend = c("2p/n", "3p/n"), col = c("blue", "red"), lty = 2)
+```
+
+After checking for outliers we see that 8, 38, and 97 are potential influential points based on the leverage and Cook's distance. In order to determine if they represent true data variability, more investigation is needed.
+
+
+# Final Model
+
+```{r}
+centered_interaction_model = lm(Weight.Change..lbs. ~ (Calories_centered + Duration_centered)^2, data = weight)
+
+summary(centered_interaction_model)
+```
+
+# Full Model Equation
+
+$$\text{Weight Change (lbs)} = \beta_0 + \beta_1(\text{Calories\_centered}) + \beta_2(\text{Duration\_centered}) + \beta_3(\text{Calories\_centered} \times \text{Duration\_centered})$$
+
+# Predicted Weight Change
+
+Base on the model above we will predict weight change. For Calories_centered = 500 and Duration_centered = 10, we get:
+
+$$\text{Weight Change (lbs)} = -2.783 - (0.00244 \times 500) - (0.318 \times 10) - (0.00071 \times 500 \times 10)$$
+
+Thus, we have a predicted weight change:
+
+$$\text{Weight Change (lbs)} = -10.733$$
+
+Meaning that, with these set values the predicted \(\text{Weight Change (lbs)}\) is \(-10.733 lbs\).
+
+
+# Conclusion
+
+The final model explains only 4.95% of variability in weight change, using the multiple R-squared and 1.98% using adjusted \(R^2\). The model has no statistically significant predictors or interaction terms. This suggests that the quantitative variables do not strongly influence weight change alone, based on this data set. After doing diagnostic tests we  see that several assumptions are violated, including heteroscedasticity with Breusch-Pagan having a p-value of 0.0005574, non-normal residuals for normality assumption like Shapiro-Wilk test having a p-value of \(6.277 \times 10^-8\), and outliers like 8, 38, and 97. The independence assumptions appear valid, the presence of non-linearity, non-constant variance, and influential points limits the model reliability. Based off of the results of our full combined model, both qualitative and quantitative, this suggests that elements such as physical activity level and stress have a much greater impact on weight change. This suggests that weight change is likely influenced by other factors and that the qualitative values alone are not enough to show the variation in weight change.
+
+
+
+
+
