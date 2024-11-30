@@ -1,0 +1,239 @@
+---
+title: "Qualitative variables"
+author: "Harpreet"
+date: "2024-11-13"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+
+# Load Required Libraries
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(GGally)
+library(car)
+library(lmtest)
+library(MASS)
+library(mctest)
+library(leaps)
+library(olsrr)
+```
+
+# Dataset Loading.
+
+```{r}
+
+weight=read.csv("D:\\RData603\\Project\\weight_change_dataset.csv")
+
+print(head(weight))
+```
+
+Meet our, 100 participants who has decided to embark on a transformative journey to improve their health and well-being. They are determined to contribute to body test which is going to be really helpful in the health department to understand how various lifestyle factors influence the body weight.
+
+Starting down with the following variables -
+
+1.  Gender- M or F
+2.  Physical.Activity.Level
+3.  Sleep.Quality
+4.  Stress.Level
+
+Androgynous commits to track their progress with how does their physical activity level is throughout that period of time. Not only the physical monitoring is done also the mental aspects were kept under radar such as there sleep quality and stress level was also monitored.
+
+$H_0: \beta_1 = \beta_2 =...= \beta_i=0\mbox{    (i=1,2,...,p)}$ $H_a: \mbox{ At least one } \beta_i \neq 0\mbox{    (i=1,2,...,p)}$
+
+```{r}
+weight_plot <- data.frame(Activity = factor(weight$Physical.Activity.Level),
+  Sleep = factor(weight$Sleep.Quality),
+  Stress = factor(weight$Stress.Level),
+  Gender = factor(weight$Gender)
+)
+```
+# Create the pair plot using categorical options
+```{r}
+ggpairs(weight_plot, 
+        lower = list(combo = "facethist", discrete = "facetbar", na = "na"))
+
+```
+
+#Full Model
+
+```{r}
+Weight_full_model= lm(Weight.Change..lbs.~ factor(Gender)+factor(Physical.Activity.Level)+factor(Sleep.Quality)+factor(Stress.Level), data=weight)
+print(summary(Weight_full_model))
+```
+
+$$
+\text{Weight.Change (lbs)} = 1.7189 - 8.1191 \cdot \text{SleepQualityPoor} - 10.8574 \cdot \text{StressLevel8} - 9.1820 \cdot \text{StressLevel9}$$
+
+Based on the regression output, the significant predictors at a significance level of 0.05 are:
+
+factor(Sleep.Quality)Poor factor(Stress.Level)8 factor(Stress.Level)9 Sleep Quality: Poor sleep quality has a strong negative impact on weight change, leading to significant weight loss compared to excellent sleep quality. Stress Levels: High stress levels (specifically Level 8 and Level 9) also significantly reduce weight change compared to lower stress levels.
+
+# So removing the Physical.Activity.Level and Gender because they were non significant.
+
+```{r}
+weight_refined_model=lm(Weight.Change..lbs.~factor(Sleep.Quality)+factor(Stress.Level), data=weight)
+print(summary(weight_refined_model))
+```
+
+$$
+\text{Weight.Change (lbs)} = 1.6678 - 7.9000 \cdot \text{SleepQualityPoor} - 11.3423 \cdot \text{StressLevel8} - 9.3792 \cdot \text{StressLevel9}
+$$
+
+-   The refined model has a slightly better **Adjusted R-squared** (0.69) than the full model, indicating an improvement in model simplicity and explanatory power.
+
+-   The variables **factor(Sleep.Quality)Poor**, **factor(Stress.Level)8**, and **factor(Stress.Level)9** remain highly significant and have the greatest impact on weight change.
+
+# Calculate Variance Inflation Factor (VIF)
+
+```{r}
+library(car)
+vif(weight_refined_model) # under library car
+imcdiag(weight_refined_model,method='VIF')
+
+```
+
+As we are checking is If VIF \> 5 consider removing or combining variables. But in our case the VIF is less than 5 so all three predictors are acceptable(we are keep all 3) as NO significant multicollinearity.
+
+Refined model is good.
+
+# Interaction Model- with centered variables
+
+#the next step is to assess whether adding interaction terms improves the model. Interaction terms are useful when we suspect that the effect of one predictor on the response variable depends on the level of another predictor.
+
+```{r}
+
+weight_interaction_model= lm(Weight.Change..lbs.~(factor(Sleep.Quality)+factor(Stress.Level))^2, data=weight)
+print(summary(weight_interaction_model))
+
+```
+
+The interaction model does not improve predictive performance or interpretability over the refined model. The refined model remains the best choice for explaining the relationship between weight change, Sleep Quality, and Stress Level.
+
+As the Adjusted R sqaure is decresesed in this moodle and RSE increases compared to the refined model and also the significant values are reduced so sticcking with the refined model.
+
+
+# Higher order model on Interction model 1 as the R squre is higher in that than 
+Notes-Use of I(factor()\^2) is for continuous variables where you want to square the variable, but it's not applicable to categorical variables. As here are all categorical variables we will just do it like -
+
+```{r}
+weight_higher_order_model = lm(Weight.Change..lbs. ~ (factor(Sleep.Quality) + factor(Stress.Level))^3, data=weight)
+print(summary(weight_higher_order_model))
+
+```
+
+Oh nice its same , as by doing the higher order as well it gives the same values which means we can stick to our refined model.
+
+# Residuals - check code
+
+```{r}
+plot(weight_refined_model)
+```
+
+# Linearity Assumption - check code
+
+```{r}
+
+# Residuals vs Fitted Values
+ggplot(weight_refined_model, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_smooth(method = "loess", color = "blue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Residuals vs Fitted Values", x = "Fitted Values", y = "Residuals")
+
+```
+
+This plot suggests that the model is a reasonable fit, but there might be some room for improvement in terms of linearity.
+
+# Independence Assumption - check code
+
+```{r}
+plot(residuals(weight_refined_model), type = "o", col = "blue", 
+     main = "Residuals vs Observation Number",
+     xlab = "Observation Number", ylab = "Residuals")
+abline(h = 0, lty = 2, col = "red")
+```
+
+# Equal Variance Assumption - check code
+
+```{r}
+ggplot(weight_refined_model, aes(x = .fitted, y = .resid)) +
+  geom_point(color = "purple") +
+  geom_smooth(method = "loess", color = "green4") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Residuals vs Fitted Values", x = "Fitted Values", y = "Residuals")
+
+# Breusch-Pagan Test
+library(lmtest)
+bptest(weight_interaction_model)
+```
+
+Null hypothesis: The residuals have constant variance Alternative Hypothesis: The residuals do not have constant variance (heteroscedasticity exists).
+
+The Breusch-Pagan test shows evidence of heteroscedasticity in the model, as the p-value (0.01872) is less than 0.05.we reject the null hypothesis. there is statistically significant evidence of heteroscedasticity in the model.
+
+# normality
+
+```{r}
+# QQ Plot
+qqnorm(residuals(weight_refined_model))
+qqline(residuals(weight_refined_model), col = "red")
+
+# Shapiro-Wilk Test
+shapiro.test(residuals(weight_refined_model))
+```
+
+The Q-Q plot suggests that the data may not be perfectly normally distributed. The outliers might be indicative of non-normality. Null Hypothesis: The residuals are normally distributed. Alternate: The residuals are not normally distributed. Since the p-value is much smaller than 0.05, we reject the null hypothesis at the 5% significance level.
+
+the Shapiro-Wilk test shows that the residuals do not follow a normal distribution(the differences between the predicted and actual values) from your model are not normally distributed.
+
+# Check for Outliers - check code
+
+```{r}
+# Cook's Distance
+plot(weight_refined_model, which = 4, col = "red", pch = 18, 
+     main = "Cook's Distance Plot")
+
+# Observations with high Cook's distance
+weight[cooks.distance(weight_refined_model) > 0.5, ]
+
+# Leverage values
+lev = hatvalues(weight_refined_model)
+p = length(coef(weight_refined_model))
+n = nrow(weight)
+outliers_2pn = lev[lev > (2 * p / n)]
+outliers_3pn = lev[lev > (3 * p / n)]
+
+# Leverage plot
+plot(1:n, lev, type = "h", main = "Leverage Plot", 
+     xlab = "Observation Index", ylab = "Leverage")
+abline(h = c(2 * p / n, 3 * p / n), col = c("blue", "red"), lty = 2)
+legend("topright", legend = c("2p/n", "3p/n"), col = c("blue", "red"), lty = 2)
+```
+
+There are three influential points in the data, highlighted by the red vertical lines at observations 8, 38, and 72. Cook's Distance Values: These points have high Cook's distances, exceeding the threshold, suggesting they significantly influence the regression model.
+
+High leverage: The outlier has an unusual combination of predictor values, making it influential. High residual: The outlier has a large difference between its observed and predicted values, suggesting it's not well explained by the model.
+
+The data points at observations 8, 38, and 72 are influential because they significantly affect the estimated coefficients of the regression model. \# To have the final model
+
+Final Model :
+
+```{r}
+print(summary(weight_refined_model))
+```
+
+$$\text{Weight.Change (lbs)} = 1.6678 - 7.9000 \cdot \text{SleepQualityPoor} - 11.3423 \cdot \text{StressLevel8} - 9.3792 \cdot \text{StressLevel9}$$ In conclusion the refined model explores the relationship between weight change and two key factors: sleep quality and stress level. After fitting the model,
+
+Sleep Quality: Among the different sleep quality categories, poor sleep quality has a significant negative impact on weight change, with a large negative coefficient of -7.90, indicating that poor sleep quality is associated with a substantial reduction in weight. This effect is statistically significant with a p-value of 2.06e-08.
+
+Stress Level: High stress levels, particularly at stress levels 8 and 9, also show a significant negative impact on weight change, with coefficients of -11.34 and -9.38, respectively, both of which are statistically significant (p-values 7.78e-09 and 2.65e-06).
+
+These findings suggest that higher stress levels are associated with greater weight loss.
+
+Despite these significant findings, sleep quality and stress level factors do not show strong effects in other categories, as most other coefficients do not reach statistical significance.
+
+Overall, the model explains a moderate proportion of variance in weight change (Adjusted R-squared = 0.69), indicating that these two factors contribute to understanding weight changes, but other un-explored factors might also play a significant role.
