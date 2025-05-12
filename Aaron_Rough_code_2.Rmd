@@ -1,0 +1,195 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+weight=read.csv("C:\\Users\\agelf\\Documents\\School\\U of C\\Masters of Data Science and Analytics\\Data 603\\Group Project\\weight_change_dataset.csv")
+colnames(weight)
+```
+```{r}
+library(GGally)
+```
+
+```{r}
+weight_plot=data.frame(weight$Age,weight$BMR..Calories.,weight$Daily.Calories.Consumed,weight$Daily.Caloric.Surplus.Deficit,weight$Weight.Change..lbs.,weight$Duration..weeks.)
+ggpairs(weight_plot,lower = list(continuous = "smooth_loess", combo =
+  "facethist", discrete = "facetbar", na = "na"))
+```
+
+Full model:
+
+#```{r}
+#weight_model_full=lm(Weight.Change..lbs.~Age+factor(Gender)+Current.Weight..lbs.+BMR..Calories.+Daily.Calories.Consumed+Daily.Caloric.#Surplus.Deficit+Duration..weeks.+factor(Physical.Activity.Level)+factor(Sleep.Quality)+factor(Stress.Level)+Final.Weight..lbs., #data=weight)
+#summary(weight_model_full)
+#```
+
+REMOVE CURRENT WEIGHT AND FINAL WEIGHT
+
+```{r}
+weight_model_take2=lm(Weight.Change..lbs.~Age+factor(Gender)+BMR..Calories.+Daily.Calories.Consumed+Daily.Caloric.Surplus.Deficit+Duration..weeks.+factor(Physical.Activity.Level)+factor(Sleep.Quality)+factor(Stress.Level), data=weight)
+summary(weight_model_take2)
+```
+```{r}
+alias(weight_model_take2)
+```
+```{r}
+vif(weight_model_take2)
+imcdiag(weight_model_take2, method="VIF")
+```
+REMOVE BMR AND DAILY CALORIES CONSUMED, AS DAILY CALORIC SURPLUS/DEFICIT IS CALCULATED FROM THE 2
+
+```{r}
+weight_model_take3=lm(Weight.Change..lbs.~Daily.Caloric.Surplus.Deficit+Age+factor(Gender)+Duration..weeks.+factor(Physical.Activity.Level)+factor(Sleep.Quality)+factor(Stress.Level), data=weight)
+summary(weight_model_take3)
+```
+KEEP DURATION, SLEEP QUALITY, STRESS LEVEL
+
+```{r}
+vif(weight_model_take3)
+imcdiag(weight_model_take3, method="VIF")
+```
+
+```{r}
+library(olsrr)
+```
+
+
+```{r}
+weight_model_take4=lm(Weight.Change..lbs.~factor(Sleep.Quality)+Duration..weeks.+factor(Stress.Level), data=weight)
+summary(weight_model_take4)
+```
+
+CHECK FOR INT TERMS
+```{r}
+weight_model_take4_int=lm(Weight.Change..lbs.~(factor(Sleep.Quality)+Duration..weeks.+factor(Stress.Level))^2, data=weight)
+summary(weight_model_take4_int)
+```
+KEEP SLEEP, DURATION, STRESS, SLEEPxDURATION, DURATIONxSTRESS
+
+```{r}
+weight_model_take4_int_2=lm(Weight.Change..lbs.~factor(Sleep.Quality)+Duration..weeks.+factor(Stress.Level)+factor(Sleep.Quality)*Duration..weeks.+Duration..weeks.*factor(Stress.Level), data=weight)
+summary(weight_model_take4_int_2)
+```
+```{r}
+plot(weight_model_take4_int_2)
+```
+
+```{r}
+library(Ecdat)
+library(lmtest)
+bptest(weight_model_take4_int_2)
+shapiro.test(residuals(weight_model_take4_int_2))
+```
+FAILS ASSUMPTIONS
+
+
+```{r}
+library(MASS) #for the boxcox()function
+bc=boxcox(weight_model_take4_int_2,lambda=seq(-5,5)) #CAN USE (-5,5) for lambda
+#extract best lambda
+bestlambda=bc$x[which(bc$y==max(bc$y))]
+bestlambda
+```
+CAN'T RUN BOXCOX DUE TO NEGATIVE RESPONSE,
+
+
+
+```{r}
+weight_model_take4_int_2_2=lm((Weight.Change..lbs.+40)~factor(Sleep.Quality)+Duration..weeks.+factor(Stress.Level)+factor(Sleep.Quality)*Duration..weeks.+Duration..weeks.*factor(Stress.Level), data=weight)
+summary(weight_model_take4_int_2_2)
+```
+
+
+```{r}
+library(MASS) #for the boxcox()function
+bc=boxcox(weight_model_take4_int_2_2,lambda=seq(-5,5)) #CAN USE (-5,5) for lambda
+#extract best lambda
+bestlambda=bc$x[which(bc$y==max(bc$y))]
+bestlambda
+```
+
+```{r}
+bptest(weight_model_take4_int_2_2)
+shapiro.test(residuals(weight_model_take4_int_2_2))
+```
+
+```{r}
+adjusted_model=lm(((((Weight.Change..lbs.+40)^2.373737)-1)/2.373737)~factor(Sleep.Quality)+Duration..weeks.+factor(Stress.Level)+factor(Sleep.Quality)*Duration..weeks.+Duration..weeks.*factor(Stress.Level), data=weight)
+summary(adjusted_model)
+```
+
+```{r}
+bptest(adjusted_model)
+shapiro.test(residuals(adjusted_model))
+```
+
+
+IGNORE THIS STUFF FOR NOW
+
+```{r}
+weight2=weight
+```
+
+
+```{r}
+weight2$Gender=as.factor(weight2$Gender)
+weight2$Physical.Activity.Level=as.factor(weight2$Physical.Activity.Level)
+weight2$Sleep.Quality=as.factor(weight2$Sleep.Quality)
+weight2$Stress.Level=as.factor(weight2$Stress.Level)
+```
+
+```{r}
+weight_model_take4=lm(Weight.Change..lbs.~Age+Gender+BMR..Calories.+Daily.Calories.Consumed+Daily.Caloric.Surplus.Deficit+Duration..weeks.+Physical.Activity.Level+Sleep.Quality+Stress.Level, data=weight2)
+summary(weight_model_take4)
+```
+
+```{r}
+weight_step2=ols_step_both_p(weight_model_take4,p_enter = 0.05, p_remove = 0.06, details=TRUE)
+summary(weight_step2$model)
+```
+
+```{r}
+weight_take5=lm(Weight.Change..lbs.~Sleep.Quality+Stress.Level+Duration..weeks.+Daily.Caloric.Surplus.Deficit,data=weight2)
+summary(weight_take5)
+```
+
+Use the figures
+```{r}
+library(GGally)
+```
+
+```{r}
+weightfigs = data.frame(weight2$Weight.Change..lbs.,weight2$Sleep.Quality,weight2$Stress.Level,weight2$Duration..weeks.,weight2$Daily.Caloric.Surplus.Deficit)
+#LOESS or LOWESS: LOcally WEighted Scatter-plot Smoother
+ggpairs(weightfigs,lower = list(continuous = "smooth_loess", combo = "facethist", discrete = "facetbar", na = "na"))
+#pairs(~Y+X1+X2+factor(X3)+X4+X5,data=salary,panel = panel.smooth) 
+```
+
+
+```{r}
+weight_take5_int=lm(Weight.Change..lbs.~(Sleep.Quality+Stress.Level+Duration..weeks.+Daily.Caloric.Surplus.Deficit)^2,data=weight2)
+summary(weight_take5_int)
+```
+```{r}
+weight_take5_int_reduced=lm(Weight.Change..lbs.~Sleep.Quality + Stress.Level + Duration..weeks. + Daily.Caloric.Surplus.Deficit + Sleep.Quality*Stress.Level + Stress.Level*Duration..weeks. + Stress.Level*Daily.Caloric.Surplus.Deficit,data=weight2)
+summary(weight_take5_int_reduced)
+```
+```{r}
+anova(weight_take5_int_reduced,weight_take5_int)
+```
+
+```{r}
+anova(weight_take5_int_reduced,weight_take5)
+```
+
+```{r}
+alias(weight_take5_int_reduced)
+```
+
+
+```{r}
+imcdiag(weight_take5_int_reduced, method="VIF")
+```
+

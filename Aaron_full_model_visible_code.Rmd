@@ -1,0 +1,239 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+To determine the best model for predicting weight change, given our dataset, we begin by uploading the data set.
+```{r}
+weight=read.csv("C:\\Users\\agelf\\Documents\\School\\U of C\\Masters of Data Science and Analytics\\Data 603\\Group Project\\weight_change_dataset.csv")
+colnames(weight)
+```
+We then make sure all libraries neaded are uploaded
+```{r}
+library(GGally)
+library(mctest)
+library(car)
+library(ggplot2)
+library(Ecdat)
+library(lmtest)
+```
+
+Our first step is to build our full model, and determine whether any assumptions have been broken.  Do note, that we chose to remove the variables "Current.Weight..lbs." and "Final.Weight..lbs." because our responding variable, "Weight.Change..lbs." is just a result of subtracting the two variables, making weight change dependent on both current and final weight.  To  ensure that at least one of our predictors is significant, we test the hypothesis:
+
+$H_0: \beta_1 = \beta_2 =...= \beta_i=0\mbox{    (i=1,2,...,p)}$
+$H_a: \mbox{ At least one } \beta_i \neq 0\mbox{    (i=1,2,...,p)}$
+
+```{r}
+weight_plot=data.frame(weight$Age,weight$BMR..Calories.,weight$Daily.Calories.Consumed,weight$Daily.Caloric.Surplus.Deficit,weight$Weight.Change..lbs.,weight$Duration..weeks.)
+ggpairs(weight_plot,lower = list(continuous = "smooth_loess", combo =
+  "facethist", discrete = "facetbar", na = "na"))
+```
+
+Full model:
+
+```{r}
+weight_model_full=lm(Weight.Change..lbs. ~ Age + factor(Gender) + BMR..Calories. + Daily.Calories.Consumed + Daily.Caloric.Surplus.Deficit + Duration..weeks. + factor(Physical.Activity.Level) + factor(Sleep.Quality) + factor(Stress.Level), data=weight)
+summary(weight_model_full)
+```
+Once we have our full model, we can begin testing for some our assumptions.  We will start with multicollinearity, using the VIF method. This can be done using the code below:
+
+```{r}
+vif(weight_model_full)
+imcdiag(weight_model_full, method="VIF")
+```
+From our output, we can see that three variables have a VIF score > 5, suggesting multicollinearity. These variables are "BMR..Calories.", "Daily.Calories.Consumed", and "Daily.Caloric.Surplus.Deficit". Based on the definitions provided in the data set, "Daily.Caloric.Surplus.Deficit" is the difference between calories consumed and BMR, therefore we chose to keep "Daily.Caloric.Surplus.Deficit" and remove "BMR..Calories.", and "Daily.Calories.Consumed".
+
+Following the removal of those variables, we determine which predictors are significant using the hypothesis test:
+
+
+$H_0: \beta_i =0 \mbox{    (i=1,2,...,p)}$
+$H_a: \beta_i \neq 0\mbox{    (i=1,2,...,p)}$
+
+This can be achieved by looking at the individual t-tests from the summary of our adjusted model, as seen in our code below:
+```{r}
+weight_model_adj=lm(Weight.Change..lbs.~Daily.Caloric.Surplus.Deficit+Age+factor(Gender)+Duration..weeks.+factor(Physical.Activity.Level)+factor(Sleep.Quality)+factor(Stress.Level), data=weight)
+summary(weight_model_adj)
+```
+Based on this output, we can see there are 4 instances where the null hypothesis is rejected (p-value < 0.05), implying that these variables are significant and should be included in our model.  These variables are:
+
+- Duration..weeks.
+- factor(Sleep.Quality)Poor
+- factor(Stress.Level)8
+- factor(Stress.Level)9
+
+Despite the fact that only some of the dummies are significant, for the categories "Sleep.Quality" and "Stess.Level", we must include the full variable in our model.  This leaves us with our model:
+
+```{r}
+weight_model_adj2=lm(Weight.Change..lbs.~factor(Sleep.Quality)+Duration..weeks.+factor(Stress.Level), data=weight)
+summary(weight_model_adj2)
+```
+We can see that all predictors are now significant.  Before moving on to interaction terms, we should check again for multicollinearity, just to be certain:
+
+```{r}
+vif(weight_model_adj2)
+imcdiag(weight_model_adj2, method="VIF")
+```
+As we can see from our output, there are no issues with multicollinearity.
+
+Now we can beging checking for interaction terms. We can start by testing all interaction terms for our model using the hypothesis test:
+
+$H_0: \beta_i =0 \mbox{    (i=1,2,...,p)}$
+$H_a: \beta_i \neq 0\mbox{    (i=1,2,...,p)}$
+
+MAKE SURE THIS IS RIGHT FOR CHECKING INT TERMS
+
+```{r}
+weight_model_int=lm(Weight.Change..lbs.~(factor(Sleep.Quality)+Duration..weeks.+factor(Stress.Level))^2, data=weight)
+summary(weight_model_int)
+```
+Based on our output, we can see the significant variables (with a p-value <0.05) are "factor(Sleep.Quality)Poor:Duration..weeks.", "Duration..weeks.:factor(Stress.Level)8", "Duration..weeks.:factor(Stress.Level)9".  Although none of the initial predictors are considered significant, they are all parts of significant interaction terms, and must therefore be included in the model, therefore our interaction model would include 'Sleep.Quality', 'Duration..weeks.', 'Stress.Level', 'Sleep.Quality':'Duration..weeks.', and 'Duration..weeks.':'Stress.Level'.
+
+```{r}
+weight_model_int_final=lm(Weight.Change..lbs.~factor(Sleep.Quality)+Duration..weeks.+factor(Stress.Level)+factor(Sleep.Quality)*Duration..weeks.+Duration..weeks.*factor(Stress.Level), data=weight)
+summary(weight_model_int_final)
+```
+Our final model, before testing for the rest of our assumptions, will include the following predictors and interaction terms: Sleep.Quality, Duration..weeks., Stress.Level, Sleep.Quality:Duration..weeks., and Duration..weeks.:Stress.Level.
+
+Based on this model, we can now test the rest of our assumptions. We will start with testing for linearity by inspecting our residual plots.
+```{r}
+ggplot(weight_model_int_final, aes(x=.fitted, y=.resid)) +
+geom_point() +geom_smooth()+
+geom_hline(yintercept = 0)
+```
+Based on our residuals, there appears to be a pattern, with most data points on the right side, as well as the presence of some funnel shape. We can try to correct this by adding some polynomial terms, or transforming the data. We will start with polynomial terms.
+```{r}
+weight_model_poly=lm(Weight.Change..lbs.~factor(Sleep.Quality)+Duration..weeks.+I(Duration..weeks.^2)+factor(Stress.Level)+factor(Sleep.Quality)*Duration..weeks.+Duration..weeks.*factor(Stress.Level), data=weight)
+summary(weight_model_poly)
+```
+
+```{r}
+ggplot(weight_model_poly, aes(x=.fitted, y=.resid)) +
+geom_point() +geom_smooth()+
+geom_hline(yintercept = 0)
+```
+Adding a polynomial term appears to not be the solution, as not only does the residual plot appear the same, but the adjust R-sqaured barely increases. There is no point to preventing our interpretation for such a small increase.
+
+Next we will try performing a log transformation on Duration..weeks.
+
+```{r}
+weight_model_log <- lm(Weight.Change..lbs. ~ factor(Sleep.Quality) + log(Duration..weeks.) + factor(Stress.Level) + factor(Sleep.Quality) * log(Duration..weeks.) + log(Duration..weeks.) * factor(Stress.Level), data = weight)
+summary(weight_model_log )
+
+```
+
+```{r}
+ggplot(weight_model_log, aes(x=.fitted, y=.resid)) +
+geom_point() +geom_smooth()+
+geom_hline(yintercept = 0)
+```
+Transforming Duration..weeks. using a log transformation appears to not correct the linearity problem either.  In fact the residual plot now looks worse than before.
+
+Based on these attempts, we may need to add more complex polynomial or transformations to our data. We may also need to attempt some other model types, but for the sake of this class we will move forward using our model before we attempting correcting linearity, and simply state that our model fails the linearity assumption.
+
+The next assumption we will look at is independence. As our responding variable, Weight.Change..lbs. is not considered time-series data we can conclude this assumption has been passed.
+
+To test for homoscedasticity we can look at our residual plots, scale-location plots, and run a Breusch-Pagan Test, using the following hypothesis:
+$$
+H_0: \sigma^2_1 = \sigma^2_2 = ...=\sigma^2_n\mbox { (heteroscedasticity is not present)} \\
+H_a: \mbox {at least one }\sigma^2_i \mbox{ is different from the others i = 1, 2, ..., n (heteroscedasticity is not present)}
+$$
+
+```{r}
+plot(weight_model_int_final,which=1)
+plot(weight_model_int_final,which=3)
+bptest(weight_model_int_final)
+```
+Based on our plots and the fact that our p-value for our Breusch-Pagan Test (0.004356) is < 0.05, we can reject our null hypothesis, implying the presence of heteroscedasticity. To try and correct this, we can attempt a log transformation.
+
+```{r}
+plot(weight_model_log,which=1)
+plot(weight_model_log,which=3)
+bptest(weight_model_log)
+```
+Our plots look much better now than before, and we can see that our p-value for our Breusch-Pagan Test (0.1477) is > 0.05. This means that we now fail to reject our null hypotheis, implying heteroscedasticity is not present. This suggests that our log transformation has improved our model, allowing it to now pass the homoscedasticity assumption.  It should be noted that the adjusted R-square of our log model has decreased slightly from our previous model (0.8464 down from 0.8563).  Despite this loss, we are comfortable moving forward with the log model, as it helps us pass one of our assumptions that was previously not met.
+
+To test whether our residuals are normally distributed, we can inspect our Q-Q plot, as well as run a Shapiro-Wilk test, using the following hypothesis:
+$$
+H_0: \mbox{the residuals are normally distributed} \\
+H_a: \mbox{the residuals are not normally distributed}
+$$
+
+```{r}
+plot(weight_model_log,which=2)
+shapiro.test(residuals(weight_model_log))
+```
+Based on our Q-Q plot, we can see that the residuals are likely not normally distributed. This is further reinforced by our Shapiro Wilks test, which returned a p-value 1.788e-08.  As this is < 0.05, we reject our null hypothesis, implying that the residuals are not normally distributed.  We can attempt to correct this using a Box-Cox transformation.  Unfortunately, as our responding variable is weight change, there are values less than 0. Therefore a Box-Cox transformation cannot be done. For the time being we will simply conclude that our model has not passed the assumption of normality.
+
+Finally, we will check for outliers, using our residuals vs. leverage plot.
+
+```{r}
+plot(weight_model_log,which=5)
+```
+Based on our plot, we can see that observation 49 is an outlier. We can attempt to remove the data point to see how it affects our model
+
+```{r}
+weight_clean=weight[!weight$Participant.ID==49,]
+weight_model_log_cleaned=lm(Weight.Change..lbs. ~ factor(Sleep.Quality) + log(Duration..weeks.) + factor(Stress.Level) + factor(Sleep.Quality) * log(Duration..weeks.) + log(Duration..weeks.) * factor(Stress.Level), data = weight_clean)
+summary(weight_model_log_cleaned)
+```
+Based on the ouput of our model with and without the outlier, we can see that removing the outlier slightly improved our adjusted R-squared (0.8509 from 0.8464), while reducing or RSE (2.889 from 2.917), without changing the significance of any of our predictors.  Based on this we feel comfortable removing the indicated outlier.
+
+Although our model does fail the assumptions of linearity and normality, for the sake of this project we will go forward with our final model being:
+
+$$
+\begin{align*}
+X_{Weight.Change..lbs.} &=0.21766+0.18485X_{Sleep.Quality_{Fair}}-1.59689X_{Sleep.Quality_{Good}} \\ 
+&+1.24320X_{Sleep.Quality_{Poor}}+1.21315X_{log(Duration..weeks.)}+0.54944X_{Stress.Level_{2}} \\ 
+&-2.44803X_{Stress.Level_{3}}-1.93746X_{Stress.Level_{4}}-4.19952X_{Stress.Level_{5}}-0.32160X_{Stress.Level_{6}} \\
+&-2.49840X_{Stress.Level_{7}}+13.14533X_{Stress.Level_{8}}-0.12103X_{Stress.Level_{9}} \\
+&-0.06075(X_{Sleep.Quality_{Fair}}X_{log(Duration..weeks.)})+0.55598(X_{Sleep.Quality_{Good}}X_{log(Duration..weeks.)}) \\
+&-5.29987(X_{Sleep.Quality_{Poor}}X_{log(Duration..weeks.)})-0.46614(X_{log(Duration..weeks.)}X_{Stress.Level_{2}}) \\
+&+1.45515(X_{log(Duration..weeks.)}X_{Stress.Level_{3}})+0.89513(X_{log(Duration..weeks.)}X_{Stress.Level_{4}}) \\
+&+2.98467(X_{log(Duration..weeks.)}X_{Stress.Level_{5}})-0.02623(X_{log(Duration..weeks.)}X_{Stress.Level_{6}}) \\
+&+1.23485(X_{log(Duration..weeks.)}X_{Stress.Level_{7}})-12.05261(X_{log(Duration..weeks.)}X_{Stress.Level_{8}}) \\
+&-6.05003(X_{log(Duration..weeks.)}X_{Stress.Level_{9}})
+\end{align*}
+$$
+Now that we have our final model, we can begin interpreting it.
+
+Intercept: When sleep quality is excellent, stress level is 1, and log(duration) is 0 (which would be a duration of 1 week), the expected weight change is 0.21766 pounds.
+
+Sleep Quality:
+
+- If sleep quality is fair, the predicted weight change is $(0.18485 - 0.06075 X_{log(Duration..weeks.)})$ pounds.
+- If sleep quality is good, the predicted weight change is $(-1.59689 + 0.55598 X_{log(Duration..weeks.)})$ pounds.
+- If sleep quality is poor, the predicted weight change is $(1.24320 -5.29987 X_{log(Duration..weeks.)})$ pounds.
+- If sleep quality is excellent, the predicted weight change would simply be our model equation excluding any $Sleep.Quality_i$ terms or interactions, where i = Fair, Good, or Poor, as all values would simply be 0 for those variables.
+
+Duration in weeks:
+
+- For every one-unit increase in log(Duration..weeks.), weight change increases by: 
+$$
+\begin{align*}
+& (1.21315-0.06075X_{Sleep.Quality_{Fair}}+0.55598X_{Sleep.Quality_{Good}} -5.29987X_{Sleep.Quality_{Poor}} \\
+&-0.46614X_{Stress.Level_{2}} +1.45515X_{Stress.Level_{3}}+0.89513X_{Stress.Level_{4}} \\
+&+2.98467X_{Stress.Level_{5}}-0.02623X_{Stress.Level_{6}}+1.23485X_{Stress.Level_{7}}\\
+&-12.05261X_{Stress.Level_{8}}-6.05003X_{Stress.Level_{9}}) \mbox{ pounds}
+\end{align*}
+$$
+
+Stress Level:
+
+- If stress level is 2, the predicted weight change is $(0.54944 - 0.46614 X_{log(Duration..weeks.)})$ pounds.
+- If stress level is 3, the predicted weight change is $(-2.44803 +1.45515 X_{log(Duration..weeks.)})$ pounds.
+- If stress level is 4, the predicted weight change is $(-1.93746 +0.89513 X_{log(Duration..weeks.)})$ pounds.
+- If stress level is 5, the predicted weight change is $(-4.19952 +2.98467 X_{log(Duration..weeks.)})$ pounds.
+- If stress level is 6, the predicted weight change is $(-0.32160 -0.02623 X_{log(Duration..weeks.)})$ pounds.
+- If stress level is 7, the predicted weight change is $(-2.49840 +1.23485 X_{log(Duration..weeks.)})$ pounds.
+- If stress level is 8, the predicted weight change is $(13.14533 -12.05261 X_{log(Duration..weeks.)})$ pounds.
+- If stress level is 9, the predicted weight change is $(-0.12103 -6.05003 X_{log(Duration..weeks.)})$ pounds.
+- If stress level is 1, the predicted weight change would simply be our model equation excluding any $Stress.Level_i$ terms or interactions, where i = 2 to 9, as all values would simply be 0 for those variables.
+
+To demonstrate the predictiveness of our model, we have included an example. Assume a participant records their weight change over a period of 6 weeks, where they recorded poor sleep quality, and a stress level of 5. What would be there predicted weight change?
+
+```{r}
+new_weight_data=data.frame(Sleep.Quality='Poor',Stress.Level=5,Duration..weeks.=6)
+predict(weight_model_log_cleaned,new_weight_data,type="response")
+```
+Based on our finalized model, and assuming a participant records their weight change over a period of 6 weeks, where they recorded poor sleep quality, and a stress level of 5, we would predict their weight to decrease by 4.713261 pounds.
+
